@@ -2,41 +2,38 @@ package com.updated.bank.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.provisioning.UserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.password.HaveIBeenPwnedRestApiPasswordChecker;
 
 @Configuration
 public class SecurityConfig {
 
     @Bean
     public UserDetailsManager userDetailsService() {
-        UserDetails user1 = User.builder()
-                .username("user1")
-                .password("password1")
+        UserDetails user1 = User
+                .withUsername("user")
+                .password(encoder().encode("Andrii@@@12345"))
                 .roles("USER")
                 .build();
 
-        UserDetails user2 = User.builder()
-                .username("user2@a.com")
-                .password("password2")
-                .roles("USER")
-                .build();
-
-        UserDetails admin = User.builder()
-                .username("admin")
-                .password("adminpassword")
+        UserDetails admin = User
+                .withUsername("admin")
+                .password(encoder().encode("Admin@@@Password"))
                 .roles("ADMIN")
                 .build();
 
-        return new InMemoryUserDetailsManager(user1, user2, admin);
+        return new InMemoryUserDetailsManager(user1, admin);
     }
 
     @Bean
@@ -50,7 +47,12 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CompromisedPasswordChecker compromisedPasswordChecker() {
+        return new HaveIBeenPwnedRestApiPasswordChecker();
+    }
+
+    @Bean
     public PasswordEncoder encoder() {
-        return NoOpPasswordEncoder.getInstance();
+        return new BCryptPasswordEncoder();
     }
 }
