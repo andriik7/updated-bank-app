@@ -1,5 +1,7 @@
 package com.updated.bank.security;
 
+import com.updated.bank.exceptionhandling.CustomAccessDeniedHandler;
+import com.updated.bank.exceptionhandling.CustomBasicAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -18,12 +20,25 @@ public class SecurityProdConfig {
 
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrfConfig -> csrfConfig.disable())
+        http//.requiresChannel(rcc -> rcc.anyRequest().requiresSecure()) //HTTPS
+                .sessionManagement(smc -> smc
+                        .sessionFixation().changeSessionId()
+                        .invalidSessionUrl("/invalidSession")
+                        .maximumSessions(2)
+                        .maxSessionsPreventsLogin(true))
+                .csrf(csrfConfig -> csrfConfig.disable())
                 .authorizeHttpRequests((requests) -> requests
                         .requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards").authenticated()
-                        .requestMatchers("/notices", "/contact", "/error", "/register").permitAll());
+                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession").permitAll());
         http.formLogin(withDefaults());
-        http.httpBasic(withDefaults());
+        http.logout(lgt -> lgt
+                .invalidateHttpSession(true)
+                .clearAuthentication(true)
+                .deleteCookies("JSESSIONID"));
+        http.httpBasic(hbc ->
+                hbc.authenticationEntryPoint(new CustomBasicAuthenticationEntryPoint()));
+        http.exceptionHandling(ehc ->
+                ehc.accessDeniedHandler(new CustomAccessDeniedHandler()));
         return http.build();
     }
 
