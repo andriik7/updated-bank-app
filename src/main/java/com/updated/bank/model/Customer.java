@@ -1,35 +1,36 @@
 package com.updated.bank.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.sql.Date;
+
 @Entity
 @Getter @Setter
-@Table(name = "customer")
 public class Customer {
 
     @Id
-    @Column(name = "id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "customer_id")
     private long id;
 
+    private String name;
 
-    @Column(name = "email")
     private String email;
 
-    @Column(name = "pwd")
+    @Column(name = "mobile_number")
+    private String mobileNumber;
+
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String pwd;
 
-    @Column(name = "role")
     private String role;
 
-    public Customer() {
-    }
+    @Column(name = "create_dt")
+    @JsonIgnore
+    private Date createDt;
 
-    public Customer(String email, String pwd, String role) {
-        this.email = email;
-        this.pwd = pwd;
-        this.role = role;
-    }
 }
