@@ -2,6 +2,7 @@ package com.updated.bank.security;
 
 import com.updated.bank.exceptionhandling.CustomAccessDeniedHandler;
 import com.updated.bank.exceptionhandling.CustomBasicAuthenticationEntryPoint;
+import com.updated.bank.filter.CsrfCookieFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +13,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.password.HaveIBeenPwnedRestApiPasswordChecker;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 
@@ -26,6 +30,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http
+                .securityContext(contextConfig -> contextConfig
+                        .requireExplicitSave(false))
                 .cors(cors -> cors.configurationSource(new CorsConfigurationSource() {
                     @Override
                     public CorsConfiguration getCorsConfiguration(HttpServletRequest request) {
@@ -38,7 +44,11 @@ public class SecurityConfig {
                         return config;
                     }
                 }))
-                .csrf(csrfConfig -> csrfConfig.disable())
+                .csrf(csrfConfig -> csrfConfig
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .ignoringRequestMatchers("/contact", "/register"))
+                .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
                 .sessionManagement(smc -> smc
                         .sessionFixation().changeSessionId()
                         .invalidSessionUrl("/invalidSession")
@@ -47,7 +57,11 @@ public class SecurityConfig {
                 .requiresChannel(rcc
                         -> rcc.anyRequest().requiresInsecure()) //HTTP
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards").authenticated()
+                        .requestMatchers("/myAccount").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myCards").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myLoans").hasAnyRole("USER")
+                        .requestMatchers("/user").authenticated()
                         .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession").permitAll());
         http.formLogin(withDefaults());
         http.httpBasic(hbc ->

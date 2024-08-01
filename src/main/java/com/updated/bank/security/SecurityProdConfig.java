@@ -55,7 +55,11 @@ public class SecurityProdConfig {
                 .sessionManagement(sessionConfig -> sessionConfig
                         .sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/myAccount", "/myBalance", "/myLoans", "/myCards", "/user").authenticated()
+                        .requestMatchers("/myAccount").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/myCards").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/myBalance").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
+                        .requestMatchers("/myLoans").hasAnyRole("ROLE_USER")
+                        .requestMatchers("/user").authenticated()
                         .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession").permitAll());
         http.formLogin(withDefaults());
         http.logout(lgt -> lgt
