@@ -3,13 +3,18 @@ package com.updated.bank.security;
 import com.updated.bank.exceptionhandling.CustomAccessDeniedHandler;
 import com.updated.bank.exceptionhandling.CustomBasicAuthenticationEntryPoint;
 import com.updated.bank.filter.CsrfCookieFilter;
+import com.updated.bank.filter.JWTGeneratorFiler;
+import com.updated.bank.filter.JWTValidationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -33,8 +38,7 @@ public class SecurityProdConfig {
         CsrfTokenRequestAttributeHandler csrfTokenHandler = new CsrfTokenRequestAttributeHandler();
 
         http//.requiresChannel(rcc -> rcc.anyRequest().requiresSecure()) //HTTPS
-                .securityContext(contextConfig -> contextConfig
-                        .requireExplicitSave(false))
+                .sessionManagement(sessionConfig -> sessionConfig.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors -> cors.configurationSource(new CorsConfigurationSource() {
                     @Override
                     public CorsConfiguration getCorsConfiguration(HttpServletRequest request) {
@@ -50,17 +54,17 @@ public class SecurityProdConfig {
                 .csrf(csrfConfig -> csrfConfig
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(csrfTokenHandler)
-                        .ignoringRequestMatchers("/contact", "/register"))
+                        .ignoringRequestMatchers("/contact", "/register", "/apiLogin"))
                 .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
-                .sessionManagement(sessionConfig -> sessionConfig
-                        .sessionCreationPolicy(SessionCreationPolicy.ALWAYS))
+                .addFilterAfter(new JWTGeneratorFiler(), BasicAuthenticationFilter.class)
+                .addFilterBefore(new JWTValidationFilter(), BasicAuthenticationFilter.class)
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/myAccount").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
-                        .requestMatchers("/myCards").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
-                        .requestMatchers("/myBalance").hasAnyRole("ROLE_USER", "ROLE_ADMIN")
-                        .requestMatchers("/myLoans").hasAnyRole("ROLE_USER")
+                        .requestMatchers("/myAccount").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myCards").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myLoans").hasAnyRole("USER")
                         .requestMatchers("/user").authenticated()
-                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession").permitAll());
+                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession", "/apiLogin").permitAll());
         http.formLogin(withDefaults());
         http.logout(lgt -> lgt
                 .invalidateHttpSession(true)
@@ -81,5 +85,13 @@ public class SecurityProdConfig {
     @Bean
     public PasswordEncoder encoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(UserDetailsService detailsService, PasswordEncoder encoder) {
+        BankUsernamePasswordProdAuthenticationProvider authenticationProvider = new BankUsernamePasswordProdAuthenticationProvider(detailsService, encoder);
+        ProviderManager providerManager = new ProviderManager(authenticationProvider);
+        providerManager.setEraseCredentialsAfterAuthentication(false);
+        return providerManager;
     }
 }

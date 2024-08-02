@@ -2,13 +2,17 @@ package com.updated.bank.security;
 
 import com.updated.bank.exceptionhandling.CustomAccessDeniedHandler;
 import com.updated.bank.exceptionhandling.CustomBasicAuthenticationEntryPoint;
-import com.updated.bank.filter.CsrfCookieFilter;
+import com.updated.bank.filter.*;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -19,6 +23,7 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.Collections;
 
 import static org.springframework.security.config.Customizer.withDefaults;
@@ -29,9 +34,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .securityContext(contextConfig -> contextConfig
-                        .requireExplicitSave(false))
+        http.sessionManagement(sessionConfig -> sessionConfig.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors -> cors.configurationSource(new CorsConfigurationSource() {
                     @Override
                     public CorsConfiguration getCorsConfiguration(HttpServletRequest request) {
@@ -40,6 +43,7 @@ public class SecurityConfig {
                         config.setAllowedMethods(Collections.singletonList("*"));
                         config.setAllowCredentials(true);
                         config.setAllowedHeaders(Collections.singletonList("*"));
+                        config.setExposedHeaders(Arrays.asList("Authorization"));
                         config.setMaxAge(3600L);
                         return config;
                     }
@@ -47,13 +51,14 @@ public class SecurityConfig {
                 .csrf(csrfConfig -> csrfConfig
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-                        .ignoringRequestMatchers("/contact", "/register"))
+                        .ignoringRequestMatchers("/contact", "/register", "/apiLogin"))
                 .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
-                .sessionManagement(smc -> smc
-                        .sessionFixation().changeSessionId()
-                        .invalidSessionUrl("/invalidSession")
-                        .maximumSessions(5)
-                        .maxSessionsPreventsLogin(true))
+                .addFilterBefore(new RequestValidationBeforeFilter(), BasicAuthenticationFilter.class)
+                .addFilterAfter(new AuthoritiesLoggingAfterFilter(), BasicAuthenticationFilter.class)
+                .addFilterAfter(new JWTGeneratorFiler(), BasicAuthenticationFilter.class)
+                .addFilterBefore(new JWTValidationFilter(), BasicAuthenticationFilter.class)
+                //.addFilterAt(new AuthoritiesLoggingAtFilter(), BasicAuthenticationFilter.class)  !error prone code!
+
                 .requiresChannel(rcc
                         -> rcc.anyRequest().requiresInsecure()) //HTTP
                 .authorizeHttpRequests((requests) -> requests
@@ -62,7 +67,7 @@ public class SecurityConfig {
                         .requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/myLoans").hasAnyRole("USER")
                         .requestMatchers("/user").authenticated()
-                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession").permitAll());
+                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession", "/apiLogin").permitAll());
         http.formLogin(withDefaults());
         http.httpBasic(hbc ->
                 hbc.authenticationEntryPoint(new CustomBasicAuthenticationEntryPoint()));
@@ -79,5 +84,13 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder encoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(UserDetailsService detailsService, PasswordEncoder encoder) {
+        BankUsernamePasswordAuthenticationProvider authenticationProvider = new BankUsernamePasswordAuthenticationProvider(detailsService, encoder);
+        ProviderManager providerManager = new ProviderManager(authenticationProvider);
+        providerManager.setEraseCredentialsAfterAuthentication(false);
+        return providerManager;
     }
 }
