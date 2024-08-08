@@ -5,8 +5,6 @@ import com.updated.bank.model.Customer;
 import com.updated.bank.repository.CardsRepository;
 import com.updated.bank.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,13 +21,8 @@ public class CardsController {
 
     @GetMapping("/myCards")
     //@PostFilter("filterObject.customerId != 1")
-    public List<Cards> getCardDetails(@RequestParam long id, Authentication authentication) {
-        String email = authentication.getName();
+    public List<Cards> getCardDetails(@RequestParam String email) {
         Customer customer = customerRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException("Customer doesn't exist"));
-        if (customer.getId() != id) {
-            throw new AccessDeniedException("Customer is not allowed to access endpoint");
-        }
-        List<Cards> cards = cardsRepository.findByCustomerId(id);
-        return cards;
+        return cardsRepository.findByCustomerId(customer.getId());
     }
 }

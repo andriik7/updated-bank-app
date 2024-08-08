@@ -1,45 +1,46 @@
 package com.updated.bank.security;
 
 import com.updated.bank.exceptionhandling.CustomAccessDeniedHandler;
-import com.updated.bank.exceptionhandling.CustomBasicAuthenticationEntryPoint;
 import com.updated.bank.filter.CsrfCookieFilter;
-import com.updated.bank.filter.JWTGeneratorFiler;
-import com.updated.bank.filter.JWTValidationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.password.HaveIBeenPwnedRestApiPasswordChecker;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.Collections;
-
-import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @Profile("prod")
 public class SecurityProdConfig {
 
+//    @Value("${spring.security.oauth2.resourceserver.opaque.introspection-uri}")
+//    private String introspectiveUri;
+//
+//    @Value("${spring.security.oauth2.resourceserver.opaque.introspection-client-id}")
+//    private String clientId;
+//
+//    @Value("${spring.security.oauth2.resourceserver.opaque.introspection-client-secret}")
+//    private String clientSecret;
+
     @Bean
     SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         CsrfTokenRequestAttributeHandler csrfTokenHandler = new CsrfTokenRequestAttributeHandler();
+        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
+        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(new KeycloakRoleConverter());
 
         http//.requiresChannel(rcc -> rcc.anyRequest().requiresSecure()) //HTTPS
                 .sessionManagement(sessionConfig -> sessionConfig.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .cors(cors -> cors.configurationSource(new CorsConfigurationSource() {
+                .cors(corsConfig -> corsConfig.configurationSource(new CorsConfigurationSource() {
                     @Override
                     public CorsConfiguration getCorsConfiguration(HttpServletRequest request) {
                         CorsConfiguration config = new CorsConfiguration();
@@ -47,6 +48,7 @@ public class SecurityProdConfig {
                         config.setAllowedMethods(Collections.singletonList("*"));
                         config.setAllowCredentials(true);
                         config.setAllowedHeaders(Collections.singletonList("*"));
+                        config.setExposedHeaders(Arrays.asList("Authorization"));
                         config.setMaxAge(3600L);
                         return config;
                     }
@@ -54,44 +56,25 @@ public class SecurityProdConfig {
                 .csrf(csrfConfig -> csrfConfig
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(csrfTokenHandler)
-                        .ignoringRequestMatchers("/contact", "/register", "/apiLogin"))
+                        .ignoringRequestMatchers("/contact", "/register"))
                 .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
-                .addFilterAfter(new JWTGeneratorFiler(), BasicAuthenticationFilter.class)
-                .addFilterBefore(new JWTValidationFilter(), BasicAuthenticationFilter.class)
                 .authorizeHttpRequests((requests) -> requests
                         .requestMatchers("/myAccount").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/myCards").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers("/myBalance").authenticated()
-                        .requestMatchers("/myLoans").hasAnyRole("USER")
+                        .requestMatchers("/myBalance").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/myLoans").authenticated()
                         .requestMatchers("/user").authenticated()
-                        .requestMatchers("/notices", "/contact", "/error", "/register", "/invalidSession", "/apiLogin").permitAll());
-        http.formLogin(withDefaults());
-        http.logout(lgt -> lgt
-                .invalidateHttpSession(true)
-                .clearAuthentication(true)
-                .deleteCookies("JSESSIONID"));
-        http.httpBasic(hbc ->
-                hbc.authenticationEntryPoint(new CustomBasicAuthenticationEntryPoint()));
+                        .requestMatchers("/notices", "/contact", "/error").permitAll());
+        http.oauth2ResourceServer(rsc -> rsc
+                .jwt(jwtConfigurer -> jwtConfigurer
+                        .jwtAuthenticationConverter(jwtAuthenticationConverter)));
+//        http.oauth2ResourceServer(rsc -> rsc
+//                .opaqueToken(otc -> otc
+//                        .authenticationConverter(new KeyCloakOpaqueRoleConverter())
+//                        .introspectionUri(introspectiveUri)
+//                        .introspectionClientCredentials(clientId, clientSecret)));
         http.exceptionHandling(ehc ->
                 ehc.accessDeniedHandler(new CustomAccessDeniedHandler()));
         return http.build();
-    }
-
-    @Bean
-    public CompromisedPasswordChecker compromisedPasswordChecker() {
-        return new HaveIBeenPwnedRestApiPasswordChecker();
-    }
-
-    @Bean
-    public PasswordEncoder encoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(UserDetailsService detailsService, PasswordEncoder encoder) {
-        BankUsernamePasswordProdAuthenticationProvider authenticationProvider = new BankUsernamePasswordProdAuthenticationProvider(detailsService, encoder);
-        ProviderManager providerManager = new ProviderManager(authenticationProvider);
-        providerManager.setEraseCredentialsAfterAuthentication(false);
-        return providerManager;
     }
 }
